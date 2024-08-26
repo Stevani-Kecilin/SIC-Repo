@@ -5,7 +5,7 @@ import requests
 import paddlehub as hub
 from ultralytics import YOLO
 
-yolo_model = YOLO('hull.pt')
+yolo_model = YOLO('weights/hull.pt')
 ocr = hub.Module(name="ch_pp-ocrv3")
 external_url = 'https://dashboard-kpp.kecilin.id/api/v1/hull_number/store'
 rtsp_url = "rtsp://localhost:8554/PITSTOP"
