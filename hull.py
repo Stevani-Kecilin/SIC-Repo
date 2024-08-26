@@ -78,11 +78,15 @@ def process_frame(frame, frame_count):
                     for item in result['data']:
                         detected_text += item['text'] + " "
 
+            if not detected_text.strip():
+                detected_text = "None"
+
             timestamp = int(time.time())
             filename = f'frame_{frame_count}_{timestamp}.jpg'
             save_image(frame_with_bboxes, filename)
 
     return hull_data, detected_text.strip()
+
 
 def send_data_to_url(hull_data, detected_text, external_url):
     data = {
