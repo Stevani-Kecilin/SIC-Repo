@@ -7,7 +7,9 @@ from ultralytics import YOLO
 
 yolo_model = YOLO('hull.pt')
 ocr = hub.Module(name="ch_pp-ocrv3")
-external_url = 'http://dashboard-kpp.kecilin.id/'
+external_url = 'https://dashboard-kpp.kecilin.id/api/v1/hull_number/store'
+rtsp_url = "rtsp://localhost:8554/PITSTOP"
+
 
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
@@ -18,7 +20,7 @@ def detect_hull(image):
     bboxes = []
     for result in results:
         for box in result.boxes:
-            if int(box.cls) == 0:  
+            if int(box.cls) == 0: 
                 bboxes.append(box.xywh.cpu().numpy()[0])
     return bboxes
 
@@ -102,3 +104,35 @@ def send_data_to_url(hull_data, detected_text, external_url):
         print(f"Request error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
+def process_rtsp_stream(rtsp_url):
+    cap = cv2.VideoCapture(rtsp_url)
+    if not cap.isOpened():
+        print('Error: Unable to open RTSP stream.')
+        return
+
+    hull_data = []
+    detected_text = ""
+    frame_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame_count += 1
+        hulls, text = process_frame(frame, frame_count)
+
+        if hulls:
+            hull_data.extend(hulls)
+        if text:
+            detected_text += text
+
+        # if len(hull_data) >= 15:
+        #     break
+
+    cap.release()
+    send_data_to_url(hull_data, detected_text.strip(), external_url)
+
+if __name__ == "__main__":
+    process_rtsp_stream(rtsp_url)
