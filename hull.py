@@ -10,17 +10,12 @@ ocr = hub.Module(name="ch_pp-ocrv3")
 external_url = 'https://dashboard-kpp.kecilin.id/api/v1/hull_number/store'
 rtsp_url = "rtsp://localhost:8554/PITSTOP"
 
-
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
 def detect_hull(image):
     results = yolo_model.predict(image)
     bboxes = []
     for result in results:
         for box in result.boxes:
-            if int(box.cls) == 0: 
+            if int(box.cls) == 0:  # class '0' is truck
                 bboxes.append(box.xywh.cpu().numpy()[0])
     return bboxes
 
@@ -46,58 +41,41 @@ def perform_ocr(image):
     results = ocr.recognize_text(images=[image])
     return results
 
-def save_image(image, filename):
-    file_path = os.path.join(UPLOAD_FOLDER, filename)
-    cv2.imwrite(file_path, image)
-    return file_path
+def encode_image_to_bytes(image):
+    _, buffer = cv2.imencode('.jpg', image)
+    return buffer.tobytes()
 
-def process_frame(frame, frame_count):
+def process_frame(frame):
     hull_data = []
     detected_text = ""
 
-    if frame_count % 25 == 0:
-        bboxes = detect_hull(frame)
-        if len(bboxes) > 0:
-            frame_with_bboxes = draw_bbox(frame.copy(), bboxes)
+    bboxes = detect_hull(frame)
+    if len(bboxes) > 0:
+        frame_with_bboxes = draw_bbox(frame.copy(), bboxes)
 
-            for bbox in bboxes:
-                x, y, w, h = bbox
-                hull_data.append({
-                    "xmin": int(x - w / 2),
-                    "ymax": int(y + h / 2),
-                    "width": int(w),
-                    "height": int(h)
-                })
+        first_bbox = bboxes[0]
+        cropped_image = crop_image(frame, first_bbox)
+        ocr_results = perform_ocr(cropped_image)
 
-            first_bbox = bboxes[0]
-            cropped_image = crop_image(frame, first_bbox)
-            ocr_results = perform_ocr(cropped_image)
+        if ocr_results:
+            for result in ocr_results:
+                for item in result['data']:
+                    detected_text += item['text'] + " "
 
-            if ocr_results:
-                for result in ocr_results:
-                    for item in result['data']:
-                        detected_text += item['text'] + " "
+        if not detected_text.strip():
+            detected_text = "None"
 
-            if not detected_text.strip():
-                detected_text = "None"
+        return detected_text.strip(), frame_with_bboxes
+    return None, None
 
-            timestamp = int(time.time())
-            filename = f'frame_{frame_count}_{timestamp}.jpg'
-            save_image(frame_with_bboxes, filename)
-
-    return hull_data, detected_text.strip()
-
-
-def send_data_to_url(hull_data, detected_text, external_url):
-    data = {
-        "data": {
-            "hull_num": hull_data,
-            "detected_text": detected_text
-        }
+def send_data_to_url(detected_text, image, external_url):
+    image_bytes = encode_image_to_bytes(image)  
+    files = {
+        'detected_text': (None, detected_text),  
+        'image': ('frame.jpg', image_bytes, 'image/jpeg')  
     }
-
     try:
-        response = requests.post(url=external_url, json=data, timeout=10)
+        response = requests.post(external_url, files=files, timeout=10)
         if response.status_code not in [200, 201]:
             print(f"Failed to send data: {response.status_code}, {response.text}")
         else:
@@ -115,9 +93,8 @@ def process_rtsp_stream(rtsp_url):
         print('Error: Unable to open RTSP stream.')
         return
 
-    hull_data = []
-    detected_text = ""
     frame_count = 0
+    last_detection_frame = -101  
 
     while True:
         ret, frame = cap.read()
@@ -125,18 +102,15 @@ def process_rtsp_stream(rtsp_url):
             break
 
         frame_count += 1
-        hulls, text = process_frame(frame, frame_count)
+        if frame_count - last_detection_frame > 100:
+            detected_text, processed_frame = process_frame(frame)
 
-        if hulls:
-            hull_data.extend(hulls)
-        if text:
-            detected_text += text
-
-        # if len(hull_data) >= 15:
-        #     break
+            if processed_frame is not None:  # Truck detected
+                print(f"Truck detected in frame {frame_count}. Processing...")
+                send_data_to_url(detected_text, processed_frame, external_url)
+                last_detection_frame = frame_count  # Update last detection frame
 
     cap.release()
-    send_data_to_url(hull_data, detected_text.strip(), external_url)
 
 if __name__ == "__main__":
     process_rtsp_stream(rtsp_url)
