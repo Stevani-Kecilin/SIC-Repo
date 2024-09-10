@@ -15,7 +15,7 @@ def detect_hull(image):
     bboxes = []
     for result in results:
         for box in result.boxes:
-            if int(box.cls) == 0:  # class '0' is truck
+            if int(box.cls) == 0:  
                 bboxes.append(box.xywh.cpu().numpy()[0])
     return bboxes
 
@@ -69,23 +69,26 @@ def process_frame(frame):
     return None, None
 
 def send_data_to_url(detected_text, image, external_url):
-    image_bytes = encode_image_to_bytes(image)  
-    files = {
-        'detected_text': (None, detected_text),  
-        'image': ('frame.jpg', image_bytes, 'image/jpeg')  
-    }
-    try:
-        response = requests.post(external_url, files=files, timeout=10)
-        if response.status_code not in [200, 201]:
-            print(f"Failed to send data: {response.status_code}, {response.text}")
-        else:
-            print(f"Data sent successfully: {response.status_code}, {response.text}")
-    except requests.Timeout:
-        print(f"Error: Request to {external_url} timed out")
-    except requests.RequestException as e:
-        print(f"Request error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    if detected_text != "None":
+        image_bytes = encode_image_to_bytes(image)  
+        files = {
+            'detected_text': (None, detected_text), 
+            'image': ('frame.jpg', image_bytes, 'image/jpeg') 
+        }
+        try:
+            response = requests.post(external_url, files=files, timeout=10)
+            if response.status_code not in [200, 201]:
+                print(f"Failed to send data: {response.status_code}, {response.text}")
+            else:
+                print(f"Data sent successfully: {response.status_code}, {response.text}")
+        except requests.Timeout:
+            print(f"Error: Request to {external_url} timed out")
+        except requests.RequestException as e:
+            print(f"Request error: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+    else:
+        print(f"No valid text detected, skipping sending data for this frame.")
 
 def process_rtsp_stream(rtsp_url):
     cap = cv2.VideoCapture(rtsp_url)
@@ -102,13 +105,14 @@ def process_rtsp_stream(rtsp_url):
             break
 
         frame_count += 1
+
         if frame_count - last_detection_frame > 100:
             detected_text, processed_frame = process_frame(frame)
 
-            if processed_frame is not None:  # Truck detected
+            if processed_frame is not None:  
                 print(f"Truck detected in frame {frame_count}. Processing...")
                 send_data_to_url(detected_text, processed_frame, external_url)
-                last_detection_frame = frame_count  # Update last detection frame
+                last_detection_frame = frame_count  
 
     cap.release()
 
