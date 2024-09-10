@@ -60,7 +60,7 @@ def process_frame(frame):
         if ocr_results:
             for result in ocr_results:
                 for item in result['data']:
-                    detected_text += item['text'] + " "
+                    detected_text = item['text']
 
         if not detected_text.strip():
             detected_text = "None"
@@ -97,7 +97,7 @@ def process_rtsp_stream(rtsp_url):
         return
 
     frame_count = 0
-    last_detection_frame = -101  
+    last_detection_frame = -1501  
 
     while True:
         ret, frame = cap.read()
@@ -106,7 +106,7 @@ def process_rtsp_stream(rtsp_url):
 
         frame_count += 1
 
-        if frame_count - last_detection_frame > 100:
+        if frame_count - last_detection_frame > 1500:
             detected_text, processed_frame = process_frame(frame)
 
             if processed_frame is not None:  
